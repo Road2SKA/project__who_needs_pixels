@@ -1,0 +1,86 @@
+paths:
+  data: data/meerkat_patch.npz
+  model: data/siren_meerkat.pt
+  fits: MeerKAT_Galactic_Centre_1284MHz-StokesI.fits
+
+model:
+  in_features: 2
+  out_features: 1
+  hidden_features: 256
+  hidden_layers: 3
+  outermost_linear: true
+  first_omega: 30
+  hidden_omega: 30
+
+prepare:
+  patch_height: 1500
+  patch_width: 1500
+  x0: 4500
+  y0: 4500
+  dtype: float32
+  debug_plots: true
+
+train:
+  steps: 50
+  batch_size: 512
+  lr: 1.0e-4
+  amp: none            # none | fp16 | bf16
+  data_dtype: float32  # float32 | float16 | bfloat16
+  tf32: true
+  compile: false
+
+inference:
+  batch_size: 512
+  title_prefix: ""
+  save_plot: result.png
+  no_plot: false
+
+tune:
+  out_dir: data
+  seed: 0
+  n_trials: 20
+  steps: 50
+  batch_size: 512
+  lr: 1.0e-4
+  amp: none
+  data_dtype: float32
+  compile: false
+  tf32: false
+
+  # Values under search are Optuna search specs
+  search:
+    # hidden_features:
+    #   type: int
+    #   low: 128
+    #   high: 512
+    #   step: 64
+    # hidden_layers:
+    #   type: int
+    #   low: 1
+    #   high: 4
+    first_omega:
+      type: float
+      low: 1
+      high: 300
+      step: 10
+    hidden_omega:
+      type: float
+      low: 1
+      high: 300
+      step: 10
+    # lr:
+    #   type: float
+    #   low: 1.0e-5
+    #   high: 5.0e-4
+    #   log: true
+    # batch_size:
+    #   type: categorical
+    #   choices: [512, 1024, 2048]
+    # steps:
+    #   type: categorical
+    #   choices: [200]
+
+  fixed:
+    in_features: 2
+    out_features: 1
+    outermost_linear: true

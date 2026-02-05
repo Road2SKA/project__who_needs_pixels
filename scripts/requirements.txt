@@ -1,0 +1,9 @@
+numpy
+pydantic
+PyYAML
+torch
+tqdm
+astropy
+matplotlib
+rich
+scienceplots
