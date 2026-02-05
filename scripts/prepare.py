@@ -5,6 +5,9 @@ from astropy.io import fits
 from astropy.wcs import WCS
 import torch
 from configs import load_config
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 
 def load_meerkat_patch(
@@ -86,6 +89,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    console = Console()
     cfg = load_config(args.config)
     fits_path = Path(cfg.paths.fits)
     patch_height = cfg.prepare.patch_height
@@ -94,6 +98,19 @@ def main() -> None:
     y0 = cfg.prepare.y0
     out_path = Path(cfg.prepare.out or cfg.paths.data)
     dtype_name = cfg.prepare.dtype
+
+    summary = Table(title="Prepare Dataset", show_lines=False)
+    summary.add_column("Key", style="cyan", no_wrap=True)
+    summary.add_column("Value", style="white")
+    summary.add_row("fits_path", str(fits_path))
+    summary.add_row("patch_height", str(patch_height))
+    summary.add_row("patch_width", str(patch_width))
+    summary.add_row("x0", str(x0))
+    summary.add_row("y0", str(y0))
+    summary.add_row("out_path", str(out_path))
+    summary.add_row("dtype", str(dtype_name))
+    summary.add_row("debug_plots", str(cfg.prepare.debug_plots))
+    console.print(Panel(summary))
 
     data, header = load_meerkat_patch(fits_path, patch_height, patch_width, x0, y0)
 
@@ -119,7 +136,7 @@ def main() -> None:
     coords = coords.astype(dtype, copy=False)
     pixels = pixels.astype(dtype, copy=False)
 
-    print("\n=== Sanity check: coordinate ↔ pixel alignment ===")
+    console.print(Panel("Sanity check: coordinate ↔ pixel alignment"))
     idx = np.random.choice(len(coords), size=10, replace=False)
 
     for i in idx:
@@ -129,24 +146,25 @@ def main() -> None:
         target = pixels[i, 0]
         original = data[r, c]
 
-        print(
+        console.print(
             f"i={i:6d} | row={r:4d} col={c:4d} | "
             f"coord={coord} | "
             f"target={target:.6f} | image={original:.6f}"
         )
 
-    print("\n=== Target stats ===")
-    print(
-        f"min={pixels.min():.6f}, "
-        f"max={pixels.max():.6f}, "
-        f"mean={pixels.mean():.6f}, "
-        f"std={pixels.std():.6f}"
-    )
+    stats = Table(title="Target Stats", show_lines=False)
+    stats.add_column("Metric", style="cyan", no_wrap=True)
+    stats.add_column("Value", style="white")
+    stats.add_row("min", f"{pixels.min():.6f}")
+    stats.add_row("max", f"{pixels.max():.6f}")
+    stats.add_row("mean", f"{pixels.mean():.6f}")
+    stats.add_row("std", f"{pixels.std():.6f}")
+    console.print(stats)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         out_path, coords=coords, pixels=pixels, height=height, width=width
     )
-    print(f"Saved dataset to {out_path}")
+    console.print(Panel(f"Saved dataset to {out_path}", title="Done"))
 
     if cfg.prepare.debug_plots:
         import matplotlib.pyplot as plt

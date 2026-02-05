@@ -3,7 +3,9 @@ from pathlib import Path
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from rich import print
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 from train import Siren
 from configs import load_config
 
@@ -26,6 +28,8 @@ def load_siren_checkpoint(
     hidden_features=256,
     hidden_layers=3,
     outermost_linear=True,
+    first_omega=None,
+    hidden_omega=None,
 ):
     """Load a trained SIREN model from checkpoint."""
     if device is None:
@@ -33,9 +37,26 @@ def load_siren_checkpoint(
 
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
-    first_omega = checkpoint.get("first_omega")
-    hidden_omega = checkpoint.get("hidden_omega")
-    print(f"{first_omega=}, {hidden_omega=}, {hidden_features=}, {hidden_layers=}")
+    params = checkpoint.get("params", {})
+
+    def _get_param(name, fallback):
+        if name in params:
+            return params[name]
+        if name in checkpoint:
+            return checkpoint[name]
+        return fallback
+
+    in_features = int(_get_param("in_features", in_features))
+    out_features = int(_get_param("out_features", out_features))
+    hidden_features = int(_get_param("hidden_features", hidden_features))
+    hidden_layers = int(_get_param("hidden_layers", hidden_layers))
+    outermost_linear = bool(_get_param("outermost_linear", outermost_linear))
+    first_omega = float(_get_param("first_omega", first_omega))
+    hidden_omega = float(_get_param("hidden_omega", hidden_omega))
+
+    Console().log(
+        f"{first_omega=}, {hidden_omega=}, {hidden_features=}, {hidden_layers=}"
+    )
 
     state_dict = strip_compile_prefix(state_dict)
 
@@ -127,33 +148,26 @@ def calculate_statistics(pred_image, truth_image):
     return stats
 
 
-def print_statistics(stats):
+def print_statistics(stats, console: Console):
     """Print statistics in a formatted manner."""
-    print("\n" + "=" * 60)
-    print("INFERENCE STATISTICS")
-    print("=" * 60)
-
-    print("\nError Metrics:")
-    print(f"  MSE:                 {stats['MSE']:.6e}")
-    print(f"  RMSE:                {stats['RMSE']:.6e}")
-    print(f"  MAE:                 {stats['MAE']:.6e}")
-    print(f"  Max Absolute Error:  {stats['Max Absolute Error']:.6e}")
-    print(f"  PSNR:                {stats['PSNR (dB)']:.2f} dB")
-    print(f"  Relative Error:      {stats['Relative Error']:.6f}")
-
-    print("\nTruth Image Statistics:")
-    print(f"  Min:   {stats['Truth Min']:.6e}")
-    print(f"  Max:   {stats['Truth Max']:.6e}")
-    print(f"  Mean:  {stats['Truth Mean']:.6e}")
-    print(f"  Std:   {stats['Truth Std']:.6e}")
-
-    print("\nPrediction Image Statistics:")
-    print(f"  Min:   {stats['Pred Min']:.6e}")
-    print(f"  Max:   {stats['Pred Max']:.6e}")
-    print(f"  Mean:  {stats['Pred Mean']:.6e}")
-    print(f"  Std:   {stats['Pred Std']:.6e}")
-
-    print("=" * 60 + "\n")
+    metrics = Table(title="Inference Statistics", show_lines=False)
+    metrics.add_column("Metric", style="cyan", no_wrap=True)
+    metrics.add_column("Value", style="white")
+    metrics.add_row("MSE", f"{stats['MSE']:.6e}")
+    metrics.add_row("RMSE", f"{stats['RMSE']:.6e}")
+    metrics.add_row("MAE", f"{stats['MAE']:.6e}")
+    metrics.add_row("Max Abs Error", f"{stats['Max Absolute Error']:.6e}")
+    metrics.add_row("PSNR (dB)", f"{stats['PSNR (dB)']:.2f}")
+    metrics.add_row("Relative Error", f"{stats['Relative Error']:.6f}")
+    metrics.add_row("Truth Min", f"{stats['Truth Min']:.6e}")
+    metrics.add_row("Truth Max", f"{stats['Truth Max']:.6e}")
+    metrics.add_row("Truth Mean", f"{stats['Truth Mean']:.6e}")
+    metrics.add_row("Truth Std", f"{stats['Truth Std']:.6e}")
+    metrics.add_row("Pred Min", f"{stats['Pred Min']:.6e}")
+    metrics.add_row("Pred Max", f"{stats['Pred Max']:.6e}")
+    metrics.add_row("Pred Mean", f"{stats['Pred Mean']:.6e}")
+    metrics.add_row("Pred Std", f"{stats['Pred Std']:.6e}")
+    console.print(metrics)
 
 
 def plot_prediction_vs_truth(pred_image, truth_image, title_prefix="", save_path=None):
@@ -193,6 +207,7 @@ def main():
 
     args = parser.parse_args()
 
+    console = Console()
     cfg = load_config(args.config)
 
     model_path = Path(cfg.paths.model)
@@ -200,53 +215,80 @@ def main():
     hidden_features = cfg.model.hidden_features
     hidden_layers = cfg.model.hidden_layers
     in_features = cfg.model.in_features
-    batch_size = cfg.inference.batch_size
+    out_features = cfg.model.out_features
+    outermost_linear = cfg.model.outermost_linear
+    first_omega = cfg.model.first_omega
+    hidden_omega = cfg.model.hidden_omega
+    batch_size = cfg.common.batch_size
     title_prefix = cfg.inference.title_prefix
     save_plot_path = Path(cfg.inference.save_plot) if cfg.inference.save_plot else None
     no_plot = cfg.inference.no_plot
 
+    summary = Table(title="Inference Setup", show_lines=False)
+    summary.add_column("Key", style="cyan", no_wrap=True)
+    summary.add_column("Value", style="white")
+    summary.add_row("model_path", str(model_path))
+    summary.add_row("data_path", str(data_path))
+    summary.add_row("device", "cuda" if torch.cuda.is_available() else "cpu")
+    summary.add_row("batch_size", str(batch_size))
+    summary.add_row("title_prefix", str(title_prefix))
+    summary.add_row("save_plot", str(save_plot_path))
+    summary.add_row("no_plot", str(no_plot))
+    summary.add_row("in_features", str(in_features))
+    summary.add_row("out_features", str(out_features))
+    summary.add_row("hidden_features", str(hidden_features))
+    summary.add_row("hidden_layers", str(hidden_layers))
+    summary.add_row("outermost_linear", str(outermost_linear))
+    summary.add_row("first_omega", str(first_omega))
+    summary.add_row("hidden_omega", str(hidden_omega))
+    console.print(Panel(summary))
+
     # Check if files exist
     if model_path is None or not model_path.exists():
-        print(f"Error: Model file {model_path} not found")
+        console.print(Panel(f"Model file not found: {model_path}", title="Error"))
         return
 
     if data_path is None or not data_path.exists():
-        print(f"Error: Data file {data_path} not found")
+        console.print(Panel(f"Data file not found: {data_path}", title="Error"))
         return
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    console.log(f"Using device: {device}")
 
     # Load dataset
-    print(f"Loading dataset from {data_path}...")
+    console.log(f"Loading dataset from {data_path}...")
     coords, pixels, height, width = load_prepared_dataset(data_path, device)
     if height is None or width is None:
-        print(f"ERROR: {height=}, {width=}")
+        console.print(Panel(f"Invalid shape: {height=}, {width=}", title="Error"))
         exit(1)
 
-    print(f"Dataset shape: {coords.shape}, (h, w) = ({height}, {width})")
+    console.log(f"Dataset shape: {coords.shape}, (h, w) = ({height}, {width})")
 
     # Load model
-    print(f"Loading model from {model_path}...")
+    console.log(f"Loading model from {model_path}...")
     model, checkpoint = load_siren_checkpoint(
         model_path,
         device=device,
         in_features=in_features,
         hidden_features=hidden_features,
         hidden_layers=hidden_layers,
+        out_features=out_features,
+        outermost_linear=outermost_linear,
+        first_omega=first_omega,
+        hidden_omega=hidden_omega,
     )
 
     if "final_loss" in checkpoint:
-        print(f"Model training final loss: {checkpoint['final_loss']:.6e}")
+        console.log(f"Model training final loss: {checkpoint['final_loss']:.6e}")
 
     # Generate prediction
-    print("Generating prediction...")
+    console.log("Generating prediction...")
     pred_image = render_model_image(model, coords, height, width, batch_size)
     truth_image = pixels.squeeze(0).view(height, width).cpu().numpy()
 
     # Calculate statistics
     stats = calculate_statistics(pred_image, truth_image)
-    print_statistics(stats)
+    print_statistics(stats, console)
 
     # Plot results
     if not no_plot:

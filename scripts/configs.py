@@ -11,6 +11,9 @@ class PathsConfig(BaseModel):
     data: str = "data/meerkat_patch.npz"
     model: str = "data/siren_meerkat.pt"
     fits: str = "MeerKAT_Galactic_Centre_1284MHz-StokesI.fits"
+    checkpoints_dir: str = "data/checkpoints"
+    images_dir: str = "data"
+    tune_dir: str = "tune_runs"
 
 
 class ModelConfig(BaseModel):
@@ -21,6 +24,7 @@ class ModelConfig(BaseModel):
     outermost_linear: bool = True
     first_omega: float = 0.1
     hidden_omega: float = 0.1
+    lambda_wavelet: float = 0.001
 
 
 class PrepareConfig(BaseModel):
@@ -33,24 +37,26 @@ class PrepareConfig(BaseModel):
     debug_plots: bool = False
 
 
-class TrainConfig(BaseModel):
-    device: Literal["cpu", "cuda", "mps", "auto"] = "auto"
-    steps: int = 500
+class CommonConfig(BaseModel):
     batch_size: int = 512
     lr: float = 1e-4
-    out: str | None = None
     amp: str = "fp16"
     data_dtype: str = "float32"
     tf32: bool = False
     compile: bool = False
-    lambda_wavelet: float = 0.001
+
+
+class TrainConfig(BaseModel):
+    device: Literal["cpu", "cuda", "mps", "auto"] = "auto"
+    steps: int = 500
+    out: str | None = None
     wavelet: str = "db1"
     level: int = 2
     mode: str = "constant"
 
 
 class InferenceConfig(BaseModel):
-    batch_size: int = 4096
+    batch_size: int | None = None
     title_prefix: str = ""
     save_plot: str | None = None
     no_plot: bool = False
@@ -61,12 +67,6 @@ class TuneConfig(BaseModel):
     seed: int | None = None
     n_trials: int = 20
     steps: int = 500
-    batch_size: int = 512
-    lr: float = 1e-4
-    amp: str = "fp16"
-    data_dtype: str = "float32"
-    compile: bool = False
-    tf32: bool = False
     search: dict[str, Any] = Field(default_factory=dict)
     fixed: dict[str, Any] = Field(default_factory=dict)
 
@@ -77,6 +77,7 @@ class AppConfig(BaseModel):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
     prepare: PrepareConfig = Field(default_factory=PrepareConfig)
+    common: CommonConfig = Field(default_factory=CommonConfig)
     train: TrainConfig = Field(default_factory=TrainConfig)
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
     tune: TuneConfig = Field(default_factory=TuneConfig)
@@ -86,23 +87,6 @@ class AppConfig(BaseModel):
 
 
 def _apply_common(raw: dict[str, Any]) -> dict[str, Any]:
-    common = raw.pop("common", None)
-    if not isinstance(common, dict):
-        return raw
-
-    paths = raw.get("paths", {})
-    model = raw.get("model", {})
-
-    for key, value in common.items():
-        if key in PathsConfig.model_fields:
-            paths.setdefault(key, value)
-        elif key in ModelConfig.model_fields:
-            model.setdefault(key, value)
-
-    if paths:
-        raw["paths"] = paths
-    if model:
-        raw["model"] = model
     return raw
 
 

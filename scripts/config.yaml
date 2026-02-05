@@ -2,6 +2,17 @@ paths:
   data: data/meerkat_patch.npz
   model: data/siren_meerkat.pt
   fits: MeerKAT_Galactic_Centre_1284MHz-StokesI.fits
+  checkpoints_dir: data/checkpoints
+  images_dir: data
+  tune_dir: data
+
+common:
+  batch_size: 512
+  lr: 1.0e-4
+  amp: none            # none | fp16 | bf16
+  data_dtype: float32  # float32 | float16 | bfloat16
+  tf32: true
+  compile: false
 
 model:
   in_features: 2
@@ -11,46 +22,35 @@ model:
   outermost_linear: true
   first_omega: 30
   hidden_omega: 30
+  lambda_wavelet: 0.05
 
 prepare:
-  patch_height: 2048
-  patch_width: 2048
+  patch_height: 512
+  patch_width: 512
   x0: 4500
   y0: 4500
   dtype: float32
   debug_plots: true
 
 train:
+  checkpoint_every: 50
+  save_image_every: 10
   device: auto
   steps: 500
-  batch_size: 4096
-  lr: 1.0e-4
-  amp: none            # none | fp16 | bf16
-  data_dtype: float32  # float32 | float16 | bfloat16
-  tf32: true
-  compile: false
-  lambda_wavelet: 0.1
+  batch_size: 512
   wavelet: db1
   level: 2
   mode: constant
 
 inference:
-  batch_size: 512
   title_prefix: ""
-  save_plot: result.png
+  save_plot: images_dir
   no_plot: false
 
 tune:
-  out_dir: data
-  seed: 0
+  seed: 666
   n_trials: 20
   steps: 50
-  batch_size: 512
-  lr: 1.0e-4
-  amp: none
-  data_dtype: float32
-  compile: false
-  tf32: false
 
   # Values under search are Optuna search specs
   search:
@@ -63,16 +63,21 @@ tune:
     #   type: int
     #   low: 1
     #   high: 4
-    first_omega:
+    lambda_wavelet:
       type: float
-      low: 1
-      high: 300
-      step: 10
-    hidden_omega:
-      type: float
-      low: 1
-      high: 300
-      step: 10
+      low: 0.0
+      high: 5.00
+      step: 0.001
+    # first_omega:
+    #   type: float
+    #   low: 1
+    #   high: 300
+    #   step: 10
+    # hidden_omega:
+    #   type: float
+    #   low: 1
+    #   high: 300
+    #   step: 10
     # lr:
     #   type: float
     #   low: 1.0e-5
