@@ -42,6 +42,10 @@ class TrainConfig(BaseModel):
     data_dtype: str = "float32"
     tf32: bool = False
     compile: bool = False
+    lambda_wavelet: float = 0.001
+    wavelet: str = "db1"
+    level: int = 2
+    mode: str = "constant"
 
 
 class InferenceConfig(BaseModel):

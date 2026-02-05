@@ -28,6 +28,10 @@ train:
   data_dtype: float32  # float32 | float16 | bfloat16
   tf32: true
   compile: false
+  lambda_wavelet: 0.001
+  wavelet: db1
+  level: 2
+  mode: constant
 
 inference:
   batch_size: 512
