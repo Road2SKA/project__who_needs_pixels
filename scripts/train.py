@@ -1,4 +1,3 @@
-
 import argparse
 from datetime import datetime
 from pathlib import Path
@@ -197,6 +196,7 @@ def train(
     early_stop_patience: int = 3,
     early_stop_tolerance: float = 1e-6,
     verbose: bool = True,
+    return_metrics: bool = False,
 ):
     console = Console() if verbose else None
     optimizer = torch.optim.Adam(lr=lr, params=model.parameters())
@@ -344,6 +344,8 @@ def train(
                     break
             last_check_loss = current_loss
 
+    if return_metrics:
+        return current_loss, mse_loss, weighted_wave_loss
     return current_loss
 
 
@@ -369,7 +371,7 @@ def main() -> None:
     amp = cfg.common.amp
     data_dtype_name = cfg.common.data_dtype
     tf32 = cfg.common.tf32
-    compile_model =  cfg.common.compile
+    compile_model = cfg.common.compile
     first_omega = cfg.model.first_omega
     hidden_omega = cfg.model.hidden_omega
     in_features = cfg.model.in_features

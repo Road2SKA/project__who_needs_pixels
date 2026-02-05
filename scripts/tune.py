@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.pretty import Pretty
 
 from configs import load_config
 from train import Siren, load_dataset, train
@@ -145,6 +146,10 @@ def main() -> None:
     )
     summary.add_row("search_keys", ", ".join(search.keys()))
     summary.add_row("fixed_keys", ", ".join(fixed.keys()) or "(none)")
+    summary.add_row("early_stop", str(cfg.tune.early_stop))
+    summary.add_row("early_stop_every", str(cfg.tune.early_stop_every))
+    summary.add_row("early_stop_patience", str(cfg.tune.early_stop_patience))
+    summary.add_row("early_stop_tolerance", str(cfg.tune.early_stop_tolerance))
     console.print(Panel(summary))
     sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="minimize", sampler=sampler)
@@ -183,7 +188,7 @@ def main() -> None:
             model = torch.compile(model)
 
         start_time = time.time()
-        final_loss = train(
+        final_loss, mse_loss, wave_loss = train(
             model,
             x_data,
             y_data,
@@ -203,14 +208,30 @@ def main() -> None:
             level=int(merged.get("level", train_cfg.level)),
             mode=str(merged.get("mode", train_cfg.mode)),
             lambda_wavelet=float(merged["lambda_wavelet"]),
+            early_stop=bool(merged.get("early_stop", cfg.tune.early_stop)),
+            early_stop_every=int(
+                merged.get("early_stop_every", cfg.tune.early_stop_every)
+            ),
+            early_stop_patience=int(
+                merged.get("early_stop_patience", cfg.tune.early_stop_patience)
+            ),
+            early_stop_tolerance=float(
+                merged.get("early_stop_tolerance", cfg.tune.early_stop_tolerance)
+            ),
             verbose=False,
-        )
+            return_metrics=True,
+        )  # pyright: ignore[reportGeneralTypeIssues]
         elapsed = time.time() - start_time
+
+        trial.set_user_attr("mse_loss", mse_loss)
+        trial.set_user_attr("wave_loss", wave_loss)
 
         record = {
             "trial": trial.number + 1,
             "params": merged,
             "final_loss": final_loss,
+            "mse_loss": mse_loss,
+            "wave_loss": wave_loss,
             "elapsed_sec": elapsed,
         }
         with results_path.open("a", encoding="utf-8") as f:
@@ -236,11 +257,17 @@ def main() -> None:
         if study.best_trial is None:
             return
         best_trial = study.best_trial
-        tqdm.write(
+        mse = best_trial.user_attrs.get("mse_loss")
+        wave = best_trial.user_attrs.get("wave_loss")
+        mse_str = f"{mse:.6f}" if isinstance(mse, (int, float)) else "n/a"
+        wave_str = f"{wave:.6f}" if isinstance(wave, (int, float)) else "n/a"
+        header = (
             "Best params so far "
-            f"(trial {best_trial.number + 1}, loss {best_trial.value:.6f}):\n"
-            f"{pformat(best_trial.params)}"
+            f"(trial {best_trial.number + 1}, loss {best_trial.value:.6f}, "
+            f"mse {mse_str}, wave {wave_str})"
         )
+        console.print(Panel(header, title="Tuning Update"))
+        console.print(Pretty(best_trial.params, expand_all=True))
 
     study.optimize(objective, n_trials=n_trials, callbacks=[on_trial])
 

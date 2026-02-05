@@ -50,6 +50,12 @@ class TrainConfig(BaseModel):
     device: Literal["cpu", "cuda", "mps", "auto"] = "auto"
     steps: int = 500
     out: str | None = None
+    checkpoint_every: int = 0
+    save_image_every: int = 0
+    early_stop: bool = False
+    early_stop_every: int = 0
+    early_stop_patience: int = 3
+    early_stop_tolerance: float = 1e-6
     wavelet: str = "db1"
     level: int = 2
     mode: str = "constant"
@@ -63,10 +69,13 @@ class InferenceConfig(BaseModel):
 
 
 class TuneConfig(BaseModel):
-    out_dir: str = "tune_runs"
     seed: int | None = None
     n_trials: int = 20
     steps: int = 500
+    early_stop: bool = False
+    early_stop_every: int = 0
+    early_stop_patience: int = 3
+    early_stop_tolerance: float = 1e-6
     search: dict[str, Any] = Field(default_factory=dict)
     fixed: dict[str, Any] = Field(default_factory=dict)
 
