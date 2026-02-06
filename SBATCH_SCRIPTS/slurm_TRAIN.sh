@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=TRAIN
-#SBATCH --output=LOGS/slurm_TRAIN.out
-#SBATCH --error=LOGS/slurm_TRAIN.err
+#SBATCH --output=/idia/projects/roadtoska/projectF/LOGS/slurm_TRAIN.out
+#SBATCH --error=/idia/projects/roadtoska/projectF/LOGS/slurm_TRAIN.err
 #SBATCH --time=01:00:00
 #SBATCH --partition=GPU
 #SBATCH --constraint=A100
@@ -10,7 +10,7 @@
 #SBATCH --mem=16GB
 #SBATCH --reservation=roadtoska-gpu
 
-# SIREN Model Training - GPU Required
+# SIREN Model Training on the Milky Way galactic center mosiac - GPU Required
 # This script trains the SIREN model on prepared data
 
 echo "=========================================="
@@ -25,10 +25,9 @@ echo "=========================================="
 # ============================================================================
 # CONFIGURATION - Edit these paths as needed
 # ============================================================================
-CONFIG_FILE="${CONFIG_FILE:-/idia/projects/roadtoska/projectF/DEPENDENCIES/config.yaml}"
+SCRIPTS_DIR="${SCRIPTS_DIR:-/project_workspace/scripts}"
+CONFIG_FILE="${CONFIG_FILE:-/project_workspace/scripts/config.yaml}"
 REQUIREMENTS="${REQUIREMENTS:-/idia/projects/roadtoska/projectF/DEPENDENCIES/requirements.txt}"
-CONTAINER="${CONTAINER:-/idia/projects/roadtoska/projectF/pytorch_projectF.sif}" 
-#VENV_PATH="${VENV_PATH:-siren_env}"
 
 # ============================================================================
 # ENVIRONMENT SETUP
@@ -37,16 +36,6 @@ CONTAINER="${CONTAINER:-/idia/projects/roadtoska/projectF/pytorch_projectF.sif}"
 # Load modules
 module purge
 module load apptainer
-#module load cuda/11.7
-
-# Activate virtual environment
-#echo ""
-#echo "Activating virtual environment: $VENV_PATH"#
-#if [ ! -d "$VENV_PATH" ]; then
-#    echo "ERROR: Virtual environment not found at $VENV_PATH"
-#    exit 1
-#fi
-#source $VENV_PATH/bin/activate
 
 # ============================================================================
 # GPU CHECK
@@ -67,51 +56,20 @@ echo "=========================================="
 echo ""
 
 # ============================================================================
-# VALIDATION CHECKS
-# ============================================================================
-
-echo "=========================================="
-echo "Validation Checks"
-echo "=========================================="
-
-# Check if config file exists
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: Config file not found at $CONFIG_FILE"
-    exit 1
-fi
-echo "✓ Config file found: $CONFIG_FILE"
-
-# Check if train.py exists
-if [ ! -f "train.py" ]; then
-    echo "ERROR: train.py not found in current directory"
-    exit 1
-fi
-echo "✓ train.py found"
-
-# Check if prepared data exists (assuming it's at paths.data from config)
-# This is a basic check - train.py will do more thorough validation
-DATA_FILE=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG_FILE'))['paths']['data'])" 2>/dev/null)
-if [ -n "$DATA_FILE" ] && [ ! -f "$DATA_FILE" ]; then
-    echo "WARNING: Prepared data file not found at $DATA_FILE"
-    echo "         Training may fail if data preparation didn't complete"
-fi
-
-# Check Python and PyTorch
-apptainer exec "$CONTAINER" python --version || { echo "ERROR: Python not available"; exit 1; }
-apptainer exec --nv "$CONTAINER" python -c "import torch; print(f'PyTorch {torch.__version__}'); \
-print(f'CUDA available: {torch.cuda.is_available()}')" || { echo "ERROR: PyTorch not properly installed"; exit 1; }
-
-echo "=========================================="
-echo ""
-
-# ============================================================================
 # RUN TRAINING
 # ============================================================================
 
 echo "Starting model training..."
 echo ""
 
-apptainer exec --nv "$CONTAINER" python train.py --config "$CONFIG_FILE"
+export CONTAINER=/idia/projects/roadtoska/projectF/pytorch_projectF.sif
+
+apptainer exec --nv \
+  --bind $PWD  \
+  --bind /idia/projects/roadtoska/projectF:/project_workspace \
+  "$CONTAINER" \
+  python $SCRIPTS_DIR/train.py --config $CONFIG_FILE
+
 
 TRAIN_EXIT_CODE=$?
 
@@ -126,12 +84,3 @@ echo "=========================================="
 echo "Training completed successfully"
 echo "End time: $(date)"
 echo "=========================================="
-
-# Deactivate virtual environment
-# Deactivate virtual environment if active
-#if command -v deactivate >/dev/null 2>&1; then
-#    deactivate || true
-#fi
-
-#exit 0
-

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=PREP
-#SBATCH --output=LOGS/slurm_PREPARE.out
-#SBATCH --error=LOGS/slurm_PREPARE.err
+#SBATCH --output=/idia/projects/roadtoska/projectF/LOGS/slurm_PREPARE.out
+#SBATCH --error=/idia/projects/roadtoska/projectF/LOGS/slurm_PREPARE.err
 #SBATCH --time=00:05:00
 #SBATCH --partition=GPU
 #SBATCH --gres=gpu:1
@@ -38,16 +38,7 @@ CONFIG_FILE="${CONFIG_FILE:-/project_workspace/scripts/config.yaml}"
 # Load modules
 module purge
 module load apptainer
-#module load python/3.12
 
-# Activate virtual environment
-#echo ""
-#echo "Activating virtual environment: $VENV_PATH"
-#if [ ! -d "$VENV_PATH" ]; then
-#    echo "ERROR: Virtual environment not found at $VENV_PATH"
-#    exit 1
-#fi
-#source $VENV_PATH/bin/activate
 
 # Install requirements
 # Uncomment if we need to reinstall dependencies
@@ -63,24 +54,10 @@ module load apptainer
 # VALIDATION CHECKS
 # ============================================================================
 
-# echo ""
-# echo "=========================================="
-# echo "Validation Checks"
-# echo "=========================================="
-
-# # Check if config file exists
-# if [ ! -f "$CONFIG_FILE" ]; then
-#     echo "ERROR: Config file not found at $CONFIG_FILE"
-#     exit 1
-# fi
-# echo "✓ Config file found: $CONFIG_FILE"
-
-# # Check if prepare.py exists
-# if [ ! -f "prepare.py" ]; then
-#     echo "ERROR: prepare.py not found in current directory"
-#     exit 1
-# fi
-# echo "✓ prepare.py found"
+echo ""
+echo "=========================================="
+echo "Validation Checks"
+echo "=========================================="
 
 # Check Python installation
 python --version || { echo "ERROR: Python not available"; exit 1; }
@@ -117,12 +94,3 @@ echo "=========================================="
 echo "Data preparation completed successfully"
 echo "End time: $(date)"
 echo "=========================================="
-
-# Deactivate virtual environment
-# Deactivate virtual environment if active
-#if command -v deactivate >/dev/null 2>&1; then#
-#    deactivate || true
-#fi
-
-#exit 0
-
