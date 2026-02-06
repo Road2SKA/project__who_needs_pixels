@@ -59,6 +59,7 @@ class TrainConfig(BaseModel):
     wavelet: str = "db1"
     level: int = 2
     mode: str = "constant"
+    omega_double_on: int = 50
 
 
 class InferenceConfig(BaseModel):

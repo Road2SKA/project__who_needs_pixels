@@ -115,7 +115,9 @@ def main() -> None:
     else:
         data_dtype = torch.float32
 
-    x_data, y_data, height, width = load_dataset(data_path, device, data_dtype)
+    x_data, y_data, height, width, _rows, _cols = load_dataset(
+        data_path, device, data_dtype
+    )
 
     results_path = out_dir / "results.jsonl"
     best_path = out_dir / "best_model.pt"

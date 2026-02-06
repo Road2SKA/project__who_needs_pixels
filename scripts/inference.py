@@ -85,10 +85,12 @@ def load_prepared_dataset(npz_path, device=None, dtype=torch.float32):
     pixels = torch.from_numpy(data["pixels"]).unsqueeze(0).to(device, dtype=dtype)
     height = int(data["height"]) if "height" in data else None
     width = int(data["width"]) if "width" in data else None
-    return coords, pixels, height, width
+    rows = data["rows"] if "rows" in data else None
+    cols = data["cols"] if "cols" in data else None
+    return coords, pixels, height, width, rows, cols
 
 
-def render_model_image(model, coords, height, width, batch_size):
+def render_model_image(model, coords, height, width, batch_size, rows=None, cols=None):
     """Render the full image from the model in batches."""
     model.eval()
     num_pixels = coords.shape[1]
@@ -104,7 +106,17 @@ def render_model_image(model, coords, height, width, batch_size):
             outputs.append(batch_output)
 
     output = torch.cat(outputs, dim=1)
-    image = output.squeeze(0).view(height, width).detach().cpu().numpy()
+    flat = output.squeeze(0).detach().cpu().numpy()
+    if rows is not None and cols is not None:
+        image = np.full((height, width), np.nan, dtype=flat.dtype)
+        image[rows, cols] = flat.reshape(-1)
+    else:
+        if flat.size != height * width:
+            raise ValueError(
+                "Cannot reshape output to full image. "
+                "Provide rows/cols in the dataset to reconstruct masked pixels."
+            )
+        image = flat.view(height, width)
     return image
 
 
@@ -257,7 +269,7 @@ def main():
 
     # Load dataset
     console.log(f"Loading dataset from {data_path}...")
-    coords, pixels, height, width = load_prepared_dataset(data_path, device)
+    coords, pixels, height, width, rows, cols = load_prepared_dataset(data_path, device)
     if height is None or width is None:
         console.print(Panel(f"Invalid shape: {height=}, {width=}", title="Error"))
         exit(1)
@@ -283,8 +295,15 @@ def main():
 
     # Generate prediction
     console.log("Generating prediction...")
-    pred_image = render_model_image(model, coords, height, width, batch_size)
-    truth_image = pixels.squeeze(0).view(height, width).cpu().numpy()
+    pred_image = render_model_image(
+        model, coords, height, width, batch_size, rows=rows, cols=cols
+    )
+    truth_flat = pixels.squeeze(0).cpu().numpy()
+    if rows is not None and cols is not None:
+        truth_image = np.full((height, width), np.nan, dtype=truth_flat.dtype)
+        truth_image[rows, cols] = truth_flat.reshape(-1)
+    else:
+        truth_image = truth_flat.view(height, width)
 
     # Calculate statistics
     stats = calculate_statistics(pred_image, truth_image)

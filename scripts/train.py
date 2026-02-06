@@ -121,13 +121,34 @@ class Siren(nn.Module):
         return activations
 
 
+def update_omega(
+    siren: Siren, first_omega: float = -1, hidden_omega: float = -1
+) -> tuple[float, float, float, float]:
+    net: list[SineLayer] = siren.net  # type: ignore
+    old_first = old_hidden = new_first = new_hidden = 0
+    for layer in net:
+        if not isinstance(layer, SineLayer):
+            continue
+        if not layer.is_first:
+            old_hidden = layer.omega
+            layer.omega = hidden_omega if hidden_omega > 0 else layer.omega * 2
+            new_hidden = layer.omega
+        else:
+            old_first = layer.omega
+            layer.omega = first_omega if first_omega > 0 else layer.omega * 2
+            new_first = layer.omega
+    return old_first, new_first, old_hidden, new_hidden
+
+
 def load_dataset(npz_path: Path, device: torch.device, dtype: torch.dtype):
     data = np.load(npz_path)
     coords = torch.from_numpy(data["coords"]).unsqueeze(0).to(device, dtype=dtype)
     pixels = torch.from_numpy(data["pixels"]).unsqueeze(0).to(device, dtype=dtype)
     height = int(data["height"])
     width = int(data["width"])
-    return coords, pixels, height, width
+    rows = data["rows"] if "rows" in data else None
+    cols = data["cols"] if "cols" in data else None
+    return coords, pixels, height, width, rows, cols
 
 
 def wavelet_reg_term(img, wavelet="db1", level=2, mode="constant") -> torch.Tensor:
@@ -152,6 +173,9 @@ def render_full_image(
     height,
     width,
     batch_size_pixels,
+    rows=None,
+    cols=None,
+    fill_value=np.nan,
 ):
     num_pixels = max(x_data.shape[1], 1)
     num_batches = (num_pixels + batch_size_pixels - 1) // batch_size_pixels
@@ -166,7 +190,17 @@ def render_full_image(
             batch_output, _ = model(batch_x)
             outputs.append(batch_output)
     output = torch.cat(outputs, dim=1)
-    image = output.squeeze(0).view(height, width).detach().cpu().numpy()
+    flat = output.squeeze(0).detach().cpu().numpy()
+    if rows is not None and cols is not None:
+        image = np.full((height, width), fill_value, dtype=flat.dtype)
+        image[rows, cols] = flat.reshape(-1)
+    else:
+        if flat.size != height * width:
+            raise ValueError(
+                "Cannot reshape output to full image. "
+                "Provide rows/cols in the dataset to reconstruct masked pixels."
+            )
+        image = flat.view(height, width)
     if model_was_training:
         model.train()
     return image
@@ -179,6 +213,8 @@ def train(
     height,
     width,
     device,
+    rows,
+    cols,
     steps=500,
     batch_size_pixels=4096,
     lr=1e-4,
@@ -186,6 +222,7 @@ def train(
     wavelet: str = "db1",
     level: int = 2,
     mode: str = "constant",
+    omega_double_on: int = 0,
     lambda_wavelet: float = 0.001,
     checkpoint_every: int = 0,
     checkpoint_dir: Path | None = None,
@@ -223,17 +260,29 @@ def train(
 
     pbar = tqdm(range(steps), desc="Training", disable=not verbose)
     for step in pbar:
-        optimizer.zero_grad(set_to_none=True)
+        perm = torch.randperm(num_pixels, device=x_data.device)
+        # optimizer.zero_grad(set_to_none=True)
         current_loss = 0.0
         mse_loss = 0.0
         weighted_wave_loss = 0.0
 
+        if omega_double_on and omega_double_on == step:
+            old_first, new_first, old_hidden, new_hidden = update_omega(model)
+            if console is not None:
+                timestamp = datetime.now().isoformat(timespec="seconds")
+                console.log(
+                    f"[{timestamp}] Doubled Omegas, F: {old_first} -> {new_first}, H: {old_hidden} -> {new_hidden}"
+                )
+
         for batch_idx in range(num_batches):
-            start_idx = batch_idx * batch_size_pixels
-            end_idx = min((batch_idx + 1) * batch_size_pixels, num_pixels)
-            batch_x = x_data[:, start_idx:end_idx, :]
-            batch_y = y_data[:, start_idx:end_idx, :]
-            batch_weight = (end_idx - start_idx) / num_pixels
+            optimizer.zero_grad(set_to_none=True)
+            start = batch_idx * batch_size_pixels
+            end = min((batch_idx + 1) * batch_size_pixels, num_pixels)
+            idx = perm[start:end]
+
+            batch_x = x_data[:, idx, :]
+            batch_y = y_data[:, idx, :]
+            batch_weight = (end - start) / num_pixels
 
             with autocast(
                 device_type=device.type,
@@ -260,16 +309,18 @@ def train(
                 batch_total_loss.backward()
 
             mse_loss += batch_mse_loss.detach().item() * batch_weight
-            weighted_wave_loss += (
-                batch_weighted_wave_loss.detach().item() * batch_weight
-            )
+
+            if lambda_wavelet:
+                weighted_wave_loss += (
+                    batch_weighted_wave_loss.detach().item() * batch_weight
+                )
             current_loss += batch_total_loss.detach().item()
 
-        if use_scaler:
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            optimizer.step()
+            if use_scaler:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
 
         if verbose:
             pbar.set_postfix(
@@ -288,13 +339,19 @@ def train(
 
         step_num = step + 1
 
-        if save_image_every and (step_num % save_image_every == 0) and image_dir:
+        if (
+            save_image_every
+            and (step_num % save_image_every == 0 or step_num == 1)
+            and image_dir
+        ):
             image = render_full_image(
                 model,
                 x_data,
                 height,
                 width,
                 batch_size_pixels,
+                rows=rows,
+                cols=cols,
             )
             image_path = image_dir / f"train_pred_step_{step_num:06d}.npy"
             np.save(image_path, image)
@@ -381,6 +438,7 @@ def main() -> None:
     wavelet = cfg.train.wavelet
     level = cfg.train.level
     mode = cfg.train.mode
+    omega_double_on = cfg.train.omega_double_on
     cfg_device = cfg.train.device
 
     checkpoint_every = int(getattr(cfg.train, "checkpoint_every", 0))
@@ -418,7 +476,9 @@ def main() -> None:
     else:
         data_dtype = torch.float32
 
-    (x_data, y_data, height, width) = load_dataset(data_path, device, data_dtype)
+    (x_data, y_data, height, width, rows, cols) = load_dataset(
+        data_path, device, data_dtype
+    )
     console = Console()
     params_table = Table(title="Training Parameters", show_lines=False)
     params_table.add_column("Key", style="cyan", no_wrap=True)
@@ -435,6 +495,7 @@ def main() -> None:
     params_table.add_row("wavelet", str(wavelet))
     params_table.add_row("level", str(level))
     params_table.add_row("mode", str(mode))
+    params_table.add_row("omega_double_on", str(omega_double_on))
     params_table.add_row("lambda_wavelet", str(lambda_wavelet))
     params_table.add_row("in_features", str(in_features))
     params_table.add_row("out_features", str(out_features))
@@ -472,6 +533,8 @@ def main() -> None:
         height,
         width,
         device,
+        rows,
+        cols,
         steps=steps,
         batch_size_pixels=batch_size,
         lr=lr,
@@ -479,6 +542,7 @@ def main() -> None:
         wavelet=wavelet,
         level=level,
         mode=mode,
+        omega_double_on=omega_double_on,
         lambda_wavelet=lambda_wavelet,
         checkpoint_every=checkpoint_every,
         checkpoint_dir=Path(checkpoint_dir) if checkpoint_dir else None,

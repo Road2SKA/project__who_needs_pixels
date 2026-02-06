@@ -39,6 +39,7 @@ def load_meerkat_patch(
     data = np.log(data)
     data = data - np.nanmin(data)
     data = data / np.nanmax(data)
+    data = data * 2.0 - 1.0
     return data, header
 
 
@@ -60,8 +61,8 @@ def get_coord_grid(height: int, width: int) -> np.ndarray:
     """Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
     sidelen: int
     dim: int"""
-    tensors = (np.linspace(-1, 1, num=height), np.linspace(-1, 1, num=width))
-    mgrid = np.stack(np.meshgrid(*tensors), axis=-1)
+    tensors = (np.linspace(1, -1, num=height), np.linspace(-1, 1, num=width))
+    mgrid = np.stack(np.meshgrid(*tensors, indexing="ij"), axis=-1)
     mgrid = mgrid.reshape(-1, 2)
     return mgrid
 
@@ -162,7 +163,13 @@ def main() -> None:
     console.print(stats)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
-        out_path, coords=coords, pixels=pixels, height=height, width=width
+        out_path,
+        coords=coords,
+        pixels=pixels,
+        height=height,
+        width=width,
+        rows=rows_flat,
+        cols=cols_flat,
     )
     console.print(Panel(f"Saved dataset to {out_path}", title="Done"))
 
@@ -176,7 +183,7 @@ def main() -> None:
         plt.imshow(data, origin="lower")
         plt.colorbar()
         plt.title(
-            f"Extracted Patch Image\n$(x_0, y_0) = ({x0, y0}), (h, w) = ({height, width})$"
+            f"Extracted Patch Image\n$(x_0, y_0) = ({x0}, {y0}), (h, w) = ({height}, {width})$"
         )
         plt.tight_layout()
         plt.savefig("debug_plot.png", dpi=150)

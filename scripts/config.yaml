@@ -7,8 +7,8 @@ paths:
   tune_dir: data
 
 common:
-  batch_size: 512
-  lr: 1.0e-4
+  batch_size: 4096
+  lr: 2.0e-4
   amp: none            # none | fp16 | bf16
   data_dtype: float32  # float32 | float16 | bfloat16
   tf32: true
@@ -17,33 +17,34 @@ common:
 model:
   in_features: 2
   out_features: 1
-  hidden_features: 256
-  hidden_layers: 3
+  hidden_features: 128
+  hidden_layers: 6
   outermost_linear: true
-  first_omega: 30
-  hidden_omega: 30
-  lambda_wavelet: 0.05
+  first_omega: 15
+  hidden_omega: 7.5
+  lambda_wavelet: 0.1
 
 prepare:
-  patch_height: 512
-  patch_width: 512
-  x0: 4500
-  y0: 4500
+  patch_height: null
+  patch_width: null
+  x0: null
+  y0: null
   dtype: float32
-  debug_plots: false
+  debug_plots: true
 
 train:
   checkpoint_every: 50
-  save_image_every: 10
+  save_image_every: 5
   device: auto
   steps: 500
-  early_stop: true
+  early_stop: false
   early_stop_every: 10
   early_stop_patience: 2
-  early_stop_tolerance: 1.0e-4
-  wavelet: db1
+  early_stop_tolerance: 1.0e-5
+  wavelet: db2 # db1 | db2
   level: 2
   mode: constant
+  omega_double_on: 250
 
 inference:
   title_prefix: ""
@@ -57,32 +58,32 @@ tune:
 
   # Values under search are Optuna search specs
   search:
-    hidden_features:
-      type: int
-      low: 128
-      high: 512
-      step: 64
-    hidden_layers:
-      type: int
-      low: 1
-      high: 4
+    # hidden_features:
+    #   type: int
+    #   low: 128
+    #   high: 512
+    #   step: 64
+    # hidden_layers:
+    #   type: int
+    #   low: 1
+    #   high: 4
     lambda_wavelet:
       type: float
       low: 0.0
       high: 5.00
-    first_omega:
-      type: float
-      low: 1
-      high: 300
-    hidden_omega:
-      type: float
-      low: 1
-      high: 300
-    lr:
-      type: float
-      low: 1.0e-5
-      high: 5.0e-4
-      log: true
+    # first_omega:
+    #   type: float
+    #   low: 1
+    #   high: 300
+    # hidden_omega:
+    #   type: float
+    #   low: 1
+    #   high: 300
+    # lr:
+    #   type: float
+    #   low: 1.0e-5
+    #   high: 5.0e-4
+    #   log: true
     # batch_size:
     #   type: categorical
     #   choices: [512, 1024, 2048]
