@@ -34,7 +34,6 @@ def undo_normalize_log_meerkat(norm_data, meta_path):
         meta = json.load(f)
 
     min1 = meta["min1"]
-    eps  = meta["eps"]
     min2 = meta["min2"]
     max2 = meta["max2"]
 
@@ -43,7 +42,7 @@ def undo_normalize_log_meerkat(norm_data, meta_path):
 
     data3 = norm01 * max2 + min2
     data2 = np.exp(data3)
-    data1 = data2 - eps
+    data1 = data2 - 1e-5
     data  = data1 + min1
 
     return data
@@ -207,3 +206,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+#  example usage:
+
+#  python scripts/plot_training_frames.py --input-dir data --output-dir data/frames --pattern "train_pred_step_*.npy" --meta-path data/norm_info.json --dual
