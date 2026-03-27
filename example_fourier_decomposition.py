@@ -23,7 +23,7 @@ def semicircle_mask(height=512, width=512, radius=256):
     mask = dist_sq*1.0
     mask -= np.min(mask)
     mask /= np.max(mask)
-    return mask.astype(bool)
+    return 1-mask
 
 def gaussian_mask(height=512, width=512, sigma=60, amplitude=1.0):
 
@@ -60,7 +60,9 @@ vis_true = ft(img_true)
 # mask = np.zeros_like(img_true).astype(bool)
 # mask[128:384,128:384] = 1
 mask = circular_mask(512,512,radius = 128)
-mask = gaussian_mask(512,512,sigma = 60)
+mask = semicircle_mask(512,512,radius=128)
+mask = gaussian_mask(512,512,sigma = 100)
+
 
 vis_lo = vis_true*mask
 vis_hi = vis_true*(1-mask)
@@ -79,8 +81,11 @@ axs[0,1].imshow(np.abs(vis_true),        cmap = "cubehelix",norm=imgnorm)
 axs[0,1].set_title("true visibilities\n (magnitude)")
 axs[0,2].imshow(np.angle(vis_true),      cmap = "twilight")
 axs[0,2].set_title("true visibilities\n (phase)")
-axs[0,3].set_axis_off()
-axs[0,4].set_axis_off()
+axs[0,3].imshow(img_hi+img_lo,    cmap = "cubehelix",norm=imgnorm)
+axs[0,3].set_title("sum of hi- and\n lo-pass images")
+axs[0,4].imshow(img_hi+img_lo-img_true,    cmap = "cubehelix",norm=imgnorm)
+axs[0,4].set_title("residual")
+
 
 axs[1,0].imshow(img_hi, cmap = "cubehelix",norm=imgnorm)
 axs[1,0].set_title("high-pass image")
@@ -88,7 +93,8 @@ axs[1,1].imshow(np.abs(vis_hi),        cmap = "cubehelix",norm=imgnorm)
 axs[1,1].set_title("high-pass visibilities\n (magnitude)")
 axs[1,2].imshow(np.angle(vis_hi),      cmap = "twilight")
 axs[1,2].set_title("high-pass visibilities\n (phase)")
-axs[1,3].set_axis_off()
+axs[1,3].imshow(1-mask,        cmap = "cubehelix")
+axs[1,3].set_title("hi mask")
 axs[1,4].set_axis_off()
 
 axs[2,0].imshow(img_lo, cmap = "cubehelix",norm=imgnorm)
@@ -97,9 +103,9 @@ axs[2,1].imshow(np.abs(vis_lo),        cmap = "cubehelix",norm=imgnorm)
 axs[2,1].set_title("low-pass visibilities\n (magnitude)")
 axs[2,2].imshow(np.angle(vis_lo),      cmap = "twilight")
 axs[2,2].set_title("low-pass visibilities\n (phase)")
-axs[2,3].imshow(img_hi+img_lo,    cmap = "cubehelix",norm=imgnorm)
-axs[2,3].set_title("sum of hi- and\n lo-pass images")
-axs[2,4].imshow(img_hi+img_lo-img_true,    cmap = "cubehelix",norm=imgnorm)
-axs[2,4].set_title("residual")
+axs[2,3].imshow(mask,        cmap = "cubehelix")
+axs[2,3].set_title("lo mask")
+axs[2,4].set_axis_off()
+
 
 plt.show()
